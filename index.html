@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PD Incident Report Maker</title>
-  <meta name="description" content="Draft structured police incident reports from a brief description or an uploaded video." />
+  <meta name="description" content="Build a structured police incident report from a brief description or an uploaded video. Free, no account, works in your browser." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -13,10 +13,10 @@
       <div class="shield" aria-hidden="true">🛡️</div>
       <div>
         <h1>Incident Report Maker</h1>
-        <p class="tagline">Describe what happened or upload a video — get a structured draft report.</p>
+        <p class="tagline">Describe what happened or upload a video — build a structured report. Free, no account.</p>
       </div>
     </div>
-    <button id="settingsBtn" class="ghost-btn" type="button" aria-label="Settings">⚙️ Settings</button>
+    <button id="clearBtn" class="ghost-btn" type="button">Clear / new report</button>
   </header>
 
   <main class="layout">
@@ -32,8 +32,9 @@
       <!-- Text mode -->
       <div class="mode-panel" id="mode-text" role="tabpanel" aria-labelledby="tab-text">
         <label class="field-label" for="summaryInput">Brief summary of what happened</label>
-        <textarea id="summaryInput" rows="8"
+        <textarea id="summaryInput" rows="7"
           placeholder="e.g. Around 10:30 pm on Elm St, a silver sedan ran a red light and struck a parked car, then drove off heading north. A witness got a partial plate."></textarea>
+        <p class="hint">This becomes the summary and the start of the narrative. Fill the details below to complete the report.</p>
       </div>
 
       <!-- Video mode -->
@@ -42,28 +43,70 @@
           <input type="file" id="videoInput" accept="video/*" hidden />
           <div class="dropzone-inner">
             <div class="dz-icon" aria-hidden="true">⬆️</div>
-            <p><strong>Click to choose a video</strong> or drag &amp; drop it here</p>
-            <p class="hint">Frames are sampled in your browser. The video file itself is never uploaded anywhere.</p>
+            <p><strong>Tap to choose a video</strong> or drag &amp; drop it here</p>
+            <p class="hint">Frames are sampled in your browser. The video is never uploaded anywhere.</p>
           </div>
         </div>
         <video id="videoPreview" class="hidden" controls playsinline muted></video>
-        <div id="frameStrip" class="frame-strip" aria-live="polite"></div>
-        <label class="field-label" for="videoNotes">Optional notes to add context</label>
-        <textarea id="videoNotes" rows="3" placeholder="Anything the footage doesn't show — date, exact location, names, what happened before/after."></textarea>
+        <div id="frameList" class="frame-list" aria-live="polite"></div>
+        <button id="buildNarrativeBtn" class="ghost-btn full hidden" type="button">⬇︎ Build narrative from frame notes</button>
       </div>
 
+      <div class="section-head">Incident details</div>
       <div class="meta-grid">
         <div>
-          <label class="field-label" for="officerName">Reporting officer (optional)</label>
+          <label class="field-label" for="incidentType">Incident type</label>
+          <input type="text" id="incidentType" list="typeList" placeholder="e.g. Hit and run" />
+          <datalist id="typeList">
+            <option>Traffic collision</option><option>Hit and run</option><option>Theft / larceny</option>
+            <option>Burglary</option><option>Vandalism</option><option>Assault</option>
+            <option>Disturbance</option><option>Suspicious activity</option><option>Trespassing</option>
+            <option>DUI</option><option>Domestic incident</option><option>Welfare check</option>
+          </datalist>
+        </div>
+        <div>
+          <label class="field-label" for="caseNumber">Case / report #</label>
+          <input type="text" id="caseNumber" placeholder="auto — edit if needed" />
+        </div>
+        <div>
+          <label class="field-label" for="incidentDate">Incident date &amp; time</label>
+          <input type="datetime-local" id="incidentDate" />
+        </div>
+        <div>
+          <label class="field-label" for="location">Location / address</label>
+          <input type="text" id="location" placeholder="Street, city" />
+        </div>
+        <div>
+          <label class="field-label" for="officerName">Reporting officer</label>
           <input type="text" id="officerName" placeholder="Name / rank" />
         </div>
         <div>
-          <label class="field-label" for="badgeNo">Badge # (optional)</label>
+          <label class="field-label" for="badgeNo">Badge #</label>
           <input type="text" id="badgeNo" placeholder="e.g. 4471" />
         </div>
       </div>
 
-      <button id="generateBtn" class="primary-btn" type="button">Generate report</button>
+      <label class="field-label" for="involvedParties">Persons involved (victims, suspects, witnesses)</label>
+      <textarea id="involvedParties" rows="3" placeholder="One per line — role, name, description, contact."></textarea>
+
+      <label class="field-label" for="vehiclesProperty">Vehicles / property</label>
+      <textarea id="vehiclesProperty" rows="2" placeholder="Make/model/color/plate, or property involved."></textarea>
+
+      <label class="field-label" for="evidence">Evidence</label>
+      <textarea id="evidence" rows="2" placeholder="Photos, video, physical items, surveillance."></textarea>
+
+      <label class="field-label" for="actionsTaken">Actions taken</label>
+      <textarea id="actionsTaken" rows="2" placeholder="What you did on scene / follow-up."></textarea>
+
+      <label class="field-label" for="disposition">Status / disposition</label>
+      <input type="text" id="disposition" list="dispList" placeholder="e.g. Open — under investigation" />
+      <datalist id="dispList">
+        <option>Open — under investigation</option><option>Closed</option>
+        <option>Referred to detective</option><option>Cleared by arrest</option>
+        <option>Unfounded</option><option>Report only</option>
+      </datalist>
+
+      <button id="generateBtn" class="primary-btn" type="button">Build report</button>
       <p id="status" class="status" aria-live="polite"></p>
     </section>
 
@@ -80,49 +123,17 @@
 
       <div id="reportEmpty" class="empty-state">
         <div class="empty-icon" aria-hidden="true">📄</div>
-        <p>Your generated report will appear here.<br />Fields are editable before you export.</p>
+        <p>Your report will appear here.<br />Fields stay editable before you export.</p>
       </div>
 
       <form id="reportForm" class="report hidden"></form>
 
       <p class="disclaimer">
-        ⚠️ AI-generated draft. Officers must independently verify every fact, correct any error,
+        ⚠️ Draft only. Officers must independently verify every fact, correct any error,
         and complete required fields before this is used as, or filed with, an official record.
       </p>
     </section>
   </main>
-
-  <!-- Settings dialog -->
-  <dialog id="settingsDialog">
-    <form method="dialog" class="settings">
-      <h2>Settings</h2>
-      <label class="field-label" for="apiKey">Anthropic API key</label>
-      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
-      <p class="hint">
-        Stored only in this browser (localStorage) and sent directly to Anthropic's API.
-        Get a key at <span class="mono">console.anthropic.com</span>.
-      </p>
-
-      <label class="field-label" for="modelSelect">Model</label>
-      <select id="modelSelect">
-        <option value="claude-sonnet-5">Claude Sonnet — balanced (recommended)</option>
-        <option value="claude-opus-5">Claude Opus — most capable</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku — fastest</option>
-      </select>
-
-      <label class="field-label" for="frameCount">Video frames to sample</label>
-      <select id="frameCount">
-        <option value="6">6 frames</option>
-        <option value="8" selected>8 frames</option>
-        <option value="12">12 frames</option>
-      </select>
-
-      <div class="settings-actions">
-        <button value="cancel" class="ghost-btn" type="submit">Close</button>
-        <button id="saveSettings" value="save" class="primary-btn" type="submit">Save</button>
-      </div>
-    </form>
-  </dialog>
 
   <script src="app.js"></script>
 </body>

@@ -1,43 +1,58 @@
 "use strict";
 
-/* ---------- State & storage ---------- */
-const store = {
-  get key() { return localStorage.getItem("pd_api_key") || ""; },
-  set key(v) { localStorage.setItem("pd_api_key", v); },
-  get model() { return localStorage.getItem("pd_model") || "claude-sonnet-5"; },
-  set model(v) { localStorage.setItem("pd_model", v); },
-  get frames() { return parseInt(localStorage.getItem("pd_frames") || "8", 10); },
-  set frames(v) { localStorage.setItem("pd_frames", String(v)); },
-};
+/* ============================================================
+   PD Incident Report Maker — free, no-key, fully client-side.
+   Builds a formatted report from typed details or video frames.
+   ============================================================ */
 
-let mode = "text";
-let capturedFrames = []; // array of data URLs (jpeg)
-
-/* ---------- Element helpers ---------- */
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
+let mode = "text";
 
 function setStatus(msg, kind = "") {
-  statusEl.textContent = msg;
+  statusEl.textContent = msg || "";
   statusEl.className = "status" + (kind ? " " + kind : "");
 }
 
-/* ---------- Settings dialog ---------- */
-const dialog = $("settingsDialog");
-$("settingsBtn").addEventListener("click", () => {
-  $("apiKey").value = store.key;
-  $("modelSelect").value = store.model;
-  $("frameCount").value = String(store.frames);
-  dialog.showModal();
-});
-dialog.addEventListener("close", () => {
-  if (dialog.returnValue === "save") {
-    store.key = $("apiKey").value.trim();
-    store.model = $("modelSelect").value;
-    store.frames = parseInt($("frameCount").value, 10);
-    setStatus("Settings saved.");
-  }
-});
+/* ---------- Draft autosave ---------- */
+const INPUT_IDS = [
+  "summaryInput", "incidentType", "caseNumber", "incidentDate", "location",
+  "officerName", "badgeNo", "involvedParties", "vehiclesProperty",
+  "evidence", "actionsTaken", "disposition",
+];
+
+function saveDraft() {
+  const data = {};
+  INPUT_IDS.forEach((id) => (data[id] = $(id).value));
+  localStorage.setItem("pd_draft", JSON.stringify(data));
+}
+
+function loadDraft() {
+  try {
+    const data = JSON.parse(localStorage.getItem("pd_draft") || "{}");
+    INPUT_IDS.forEach((id) => { if (data[id] != null) $(id).value = data[id]; });
+  } catch (_) {}
+}
+
+INPUT_IDS.forEach((id) => $(id).addEventListener("input", saveDraft));
+
+/* ---------- Sensible defaults ---------- */
+function pad(n) { return String(n).padStart(2, "0"); }
+
+function defaultCaseNumber() {
+  const d = new Date();
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}${pad(d.getDate())}-${rand}`;
+}
+
+function localDatetimeValue(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function initDefaults() {
+  if (!$("caseNumber").value) $("caseNumber").value = defaultCaseNumber();
+  if (!$("incidentDate").value) $("incidentDate").value = localDatetimeValue(new Date());
+}
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -53,11 +68,29 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-/* ---------- Video upload + frame extraction ---------- */
+/* ---------- Clear ---------- */
+$("clearBtn").addEventListener("click", () => {
+  if (!confirm("Clear all fields and start a new report?")) return;
+  localStorage.removeItem("pd_draft");
+  INPUT_IDS.forEach((id) => ($(id).value = ""));
+  frameNotes = [];
+  $("frameList").innerHTML = "";
+  $("buildNarrativeBtn").classList.add("hidden");
+  $("videoPreview").classList.add("hidden");
+  $("reportForm").classList.add("hidden");
+  $("reportForm").innerHTML = "";
+  $("reportEmpty").classList.remove("hidden");
+  ["copyBtn", "printBtn", "downloadBtn"].forEach((id) => ($(id).disabled = true));
+  initDefaults();
+  setStatus("Started a new report.");
+});
+
+/* ---------- Video: local frame sampling + per-frame notes ---------- */
 const dropzone = $("dropzone");
 const videoInput = $("videoInput");
 const videoPreview = $("videoPreview");
-const frameStrip = $("frameStrip");
+const frameList = $("frameList");
+let frameNotes = []; // { time, note }
 
 dropzone.addEventListener("click", () => videoInput.click());
 dropzone.addEventListener("keydown", (e) => {
@@ -71,8 +104,7 @@ dropzone.addEventListener("keydown", (e) => {
 );
 dropzone.addEventListener("drop", (e) => {
   e.preventDefault();
-  const file = e.dataTransfer.files[0];
-  if (file) handleVideoFile(file);
+  if (e.dataTransfer.files[0]) handleVideoFile(e.dataTransfer.files[0]);
 });
 videoInput.addEventListener("change", () => {
   if (videoInput.files[0]) handleVideoFile(videoInput.files[0]);
@@ -80,24 +112,29 @@ videoInput.addEventListener("change", () => {
 
 function handleVideoFile(file) {
   if (!file.type.startsWith("video/")) { setStatus("That file isn't a video.", "error"); return; }
-  capturedFrames = [];
-  frameStrip.innerHTML = "";
-  const url = URL.createObjectURL(file);
-  videoPreview.src = url;
+  frameNotes = [];
+  frameList.innerHTML = "";
+  videoPreview.src = URL.createObjectURL(file);
   videoPreview.classList.remove("hidden");
   setStatus("Loading video…");
-  videoPreview.addEventListener("loadedmetadata", () => extractFrames(), { once: true });
+  videoPreview.addEventListener("loadedmetadata", extractFrames, { once: true });
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${pad(s)}`;
 }
 
 async function extractFrames() {
   const duration = videoPreview.duration;
   if (!isFinite(duration) || duration <= 0) { setStatus("Couldn't read video duration.", "error"); return; }
-  const n = store.frames;
+  const n = duration <= 12 ? 6 : 8;
   const canvas = document.createElement("canvas");
-  const w = 640;
+  const w = 480;
   const scale = w / (videoPreview.videoWidth || w);
   canvas.width = w;
-  canvas.height = Math.round((videoPreview.videoHeight || 360) * scale);
+  canvas.height = Math.round((videoPreview.videoHeight || 270) * scale);
   const ctx = canvas.getContext("2d");
 
   setStatus("Sampling frames", "busy");
@@ -106,14 +143,35 @@ async function extractFrames() {
     await seek(videoPreview, t);
     ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-    capturedFrames.push(dataUrl);
-    const img = document.createElement("img");
-    img.src = dataUrl;
-    img.alt = "Frame at " + t.toFixed(1) + "s";
-    frameStrip.appendChild(img);
+    frameNotes.push({ time: t, note: "" });
+    addFrameRow(dataUrl, t, frameNotes.length - 1);
   }
   videoPreview.pause();
-  setStatus(`Captured ${capturedFrames.length} frames. Ready to generate.`);
+  $("buildNarrativeBtn").classList.remove("hidden");
+  setStatus(`Captured ${n} frames. Add a note under each, then build the narrative.`);
+}
+
+function addFrameRow(dataUrl, time, idx) {
+  const row = document.createElement("div");
+  row.className = "frame-row";
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  img.alt = "Frame at " + fmtTime(time);
+  img.addEventListener("click", () => { videoPreview.currentTime = time; videoPreview.play(); });
+  const right = document.createElement("div");
+  right.className = "frame-right";
+  const stamp = document.createElement("span");
+  stamp.className = "frame-time";
+  stamp.textContent = "⏱ " + fmtTime(time);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "What's visible at this moment…";
+  input.addEventListener("input", () => { frameNotes[idx].note = input.value; });
+  right.appendChild(stamp);
+  right.appendChild(input);
+  row.appendChild(img);
+  row.appendChild(right);
+  frameList.appendChild(row);
 }
 
 function seek(video, time) {
@@ -124,139 +182,66 @@ function seek(video, time) {
   });
 }
 
-/* ---------- Report field schema ---------- */
+$("buildNarrativeBtn").addEventListener("click", () => {
+  const noted = frameNotes.filter((f) => f.note.trim());
+  if (noted.length === 0) { setStatus("Add at least one frame note first.", "error"); return; }
+  const lines = noted.map((f) => `At ${fmtTime(f.time)} into the recording, ${f.note.trim()}`);
+  const narrative = "The following is based on review of recorded video footage. " + lines.join(" ");
+  const existing = $("summaryInput").value.trim();
+  $("summaryInput").value = existing ? existing + "\n\n" + narrative : narrative;
+  saveDraft();
+  setStatus("Narrative built from frame notes and added to the summary box.");
+});
+
+/* ---------- Build the report ---------- */
 const FIELDS = [
-  { key: "incident_type", label: "Incident type / classification" },
-  { key: "case_number", label: "Case / report number" },
-  { key: "incident_datetime", label: "Date & time of incident" },
-  { key: "location", label: "Location / address" },
-  { key: "reporting_officer", label: "Reporting officer" },
-  { key: "badge_number", label: "Badge #" },
+  { key: "incident_type", label: "Incident type / classification", from: () => $("incidentType").value },
+  { key: "case_number", label: "Case / report number", from: () => $("caseNumber").value },
+  { key: "incident_datetime", label: "Date & time of incident", from: () => formatDate($("incidentDate").value) },
+  { key: "location", label: "Location / address", from: () => $("location").value },
+  { key: "reporting_officer", label: "Reporting officer", from: () => $("officerName").value },
+  { key: "badge_number", label: "Badge #", from: () => $("badgeNo").value },
 ];
 const LONG_FIELDS = [
-  { key: "summary", label: "Summary", rows: 3 },
-  { key: "narrative", label: "Narrative", rows: 10 },
-  { key: "involved_parties", label: "Persons involved (victims, suspects, witnesses)", rows: 5 },
-  { key: "vehicles_property", label: "Vehicles / property", rows: 3 },
-  { key: "evidence", label: "Evidence", rows: 3 },
-  { key: "actions_taken", label: "Actions taken", rows: 3 },
-  { key: "disposition", label: "Status / disposition", rows: 2 },
+  { key: "summary", label: "Summary", rows: 3, from: () => firstSentences($("summaryInput").value, 2) },
+  { key: "narrative", label: "Narrative", rows: 10, from: () => $("summaryInput").value },
+  { key: "involved_parties", label: "Persons involved", rows: 4, from: () => $("involvedParties").value },
+  { key: "vehicles_property", label: "Vehicles / property", rows: 2, from: () => $("vehiclesProperty").value },
+  { key: "evidence", label: "Evidence", rows: 2, from: () => $("evidence").value },
+  { key: "actions_taken", label: "Actions taken", rows: 2, from: () => $("actionsTaken").value },
+  { key: "disposition", label: "Status / disposition", rows: 1, from: () => $("disposition").value },
 ];
 
-/* ---------- Generate ---------- */
-$("generateBtn").addEventListener("click", generate);
-
-async function generate() {
-  if (!store.key) { setStatus("Add your Anthropic API key in Settings first.", "error"); dialog.showModal(); return; }
-
-  const officer = $("officerName").value.trim();
-  const badge = $("badgeNo").value.trim();
-  let content = [];
-
-  if (mode === "text") {
-    const text = $("summaryInput").value.trim();
-    if (!text) { setStatus("Enter a brief summary of what happened.", "error"); return; }
-    content.push({ type: "text", text: buildPrompt({ narrative: text, officer, badge }) });
-  } else {
-    if (capturedFrames.length === 0) { setStatus("Upload a video first.", "error"); return; }
-    const notes = $("videoNotes").value.trim();
-    content.push({ type: "text", text: buildPrompt({ videoNotes: notes, officer, badge, hasFrames: true }) });
-    capturedFrames.forEach((f) => {
-      content.push({
-        type: "image",
-        source: { type: "base64", media_type: "image/jpeg", data: f.split(",")[1] },
-      });
-    });
-  }
-
-  setGenerating(true);
-  setStatus("Contacting Claude", "busy");
-  try {
-    const report = await callClaude(content);
-    renderReport(report);
-    setStatus("Draft generated. Review and edit every field before use.");
-  } catch (err) {
-    console.error(err);
-    setStatus("Error: " + err.message, "error");
-  } finally {
-    setGenerating(false);
-  }
+function formatDate(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
 }
 
-function setGenerating(on) {
-  $("generateBtn").disabled = on;
-  $("generateBtn").textContent = on ? "Generating…" : "Generate report";
+function firstSentences(text, count) {
+  if (!text) return "";
+  const parts = text.replace(/\s+/g, " ").trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+  return parts.slice(0, count).join(" ").trim();
 }
 
-function buildPrompt({ narrative, videoNotes, officer, badge, hasFrames }) {
-  const today = new Date().toISOString().slice(0, 10);
-  let src;
-  if (hasFrames) {
-    src = "You are given still frames sampled in order from an incident video" +
-      (videoNotes ? `. Additional context from the officer: "${videoNotes}"` : ".") +
-      " Describe only what is visibly supported by the frames; do not invent details that are not observable.";
-  } else {
-    src = `Officer's brief account of the incident: "${narrative}"`;
+function val(v) {
+  return v != null && String(v).trim() ? String(v).trim() : "[UNKNOWN]";
+}
+
+$("generateBtn").addEventListener("click", () => {
+  const summary = $("summaryInput").value.trim();
+  const anyDetail = INPUT_IDS.some((id) => $(id).value.trim());
+  if (!summary && !anyDetail) {
+    setStatus("Add a brief summary or some incident details first.", "error");
+    return;
   }
-
-  return `You are a police records assistant that drafts incident reports for an officer to review.
-Today's date is ${today}.
-${officer ? `Reporting officer: ${officer}.` : ""}
-${badge ? `Badge number: ${badge}.` : ""}
-
-${src}
-
-Produce a professional, neutral, factual draft incident report. Use clear, objective law-enforcement style.
-Rules:
-- Only state facts supported by the input. For anything unknown, use the literal placeholder "[UNKNOWN]" — never guess names, plates, times, or addresses.
-- Write the narrative chronologically in third person, past tense.
-- Do not fabricate a real case number; use "[UNKNOWN]" unless one was provided.
-
-Respond with ONLY a JSON object (no markdown, no commentary) with exactly these string keys:
-"incident_type", "case_number", "incident_datetime", "location", "reporting_officer",
-"badge_number", "summary", "narrative", "involved_parties", "vehicles_property",
-"evidence", "actions_taken", "disposition".`;
-}
-
-async function callClaude(content) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": store.key,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: store.model,
-      max_tokens: 2000,
-      messages: [{ role: "user", content }],
-    }),
-  });
-
-  if (!res.ok) {
-    let detail = res.status + " " + res.statusText;
-    try { const e = await res.json(); if (e.error && e.error.message) detail = e.error.message; } catch (_) {}
-    throw new Error(detail);
-  }
-  const data = await res.json();
-  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-  return parseReport(text);
-}
-
-function parseReport(text) {
-  // Strip code fences if present, then locate the JSON object.
-  let t = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-  const start = t.indexOf("{");
-  const end = t.lastIndexOf("}");
-  if (start !== -1 && end !== -1) t = t.slice(start, end + 1);
-  try {
-    return JSON.parse(t);
-  } catch (_) {
-    // Fallback: dump everything into the narrative.
-    return { narrative: text };
-  }
-}
+  const report = {};
+  FIELDS.forEach((f) => (report[f.key] = f.from()));
+  LONG_FIELDS.forEach((f) => (report[f.key] = f.from()));
+  renderReport(report);
+  setStatus("Report built. Review and edit every field before use.");
+});
 
 /* ---------- Render editable report ---------- */
 function renderReport(report) {
@@ -295,7 +280,7 @@ function field(f, value, isLong) {
   label.textContent = f.label;
   const el = isLong ? document.createElement("textarea") : document.createElement("input");
   if (isLong) el.rows = f.rows || 3; else el.type = "text";
-  el.value = value != null && String(value).trim() ? String(value) : "[UNKNOWN]";
+  el.value = val(value);
   el.dataset.key = f.key;
   el.dataset.label = f.label;
   wrap.appendChild(label);
@@ -312,7 +297,7 @@ function reportToText() {
     lines.push("");
   });
   lines.push("-".repeat(40));
-  lines.push("AI-generated draft — must be reviewed and verified by a sworn officer before filing.");
+  lines.push("Draft — must be reviewed and verified by a sworn officer before filing.");
   return lines.join("\n");
 }
 
@@ -332,3 +317,7 @@ $("downloadBtn").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
+
+/* ---------- Boot ---------- */
+loadDraft();
+initDefaults();
