@@ -13,9 +13,10 @@ runs locally in your browser.
   a formatted report.
 - **Upload video** — samples frames from the video *in your browser*, lets you write a note under
   each frame, then stitches them into a timestamped chronological narrative.
-- Standard report fields: incident type, case #, date/time, location, officer/badge, summary,
-  narrative, persons involved, vehicles/property, evidence, actions taken, disposition.
-- Auto-fills a case number and the current date/time (both editable).
+- Produces the standardized report layout: Name / Date, Arresting Officers, Summary, Evidence
+  (Evidence Locker #), Weapon(s) with serial numbers, and Sentence (plea, months, fine).
+- Copy / Print / Download output matches that template exactly.
+- Auto-fills the current date and the default arresting agencies (both editable).
 - Every field stays **editable** before you **Copy**, **Print/PDF**, or **Download**.
 - Your draft **auto-saves** in the browser so you won't lose it on refresh.
 

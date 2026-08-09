@@ -143,6 +143,17 @@ textarea:focus, input:focus, select:focus {
 .frame-row input { padding: 6px 8px; font-size: 13px; }
 .ghost-btn.full { width: 100%; margin-top: 10px; }
 
+/* Weapon rows */
+.weapon-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.weapon-row .w-type { flex: 2; }
+.weapon-row .w-serial { flex: 1; }
+.weapon-row .w-remove {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  cursor: pointer; font-size: 14px;
+}
+.weapon-row .w-remove:hover { border-color: var(--danger); color: var(--danger); }
+
 /* Buttons */
 .primary-btn {
   width: 100%;

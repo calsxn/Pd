@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PD Incident Report Maker</title>
-  <meta name="description" content="Build a structured police incident report from a brief description or an uploaded video. Free, no account, works in your browser." />
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <meta name="description" content="Build an incident report from a brief description or an uploaded video. Free, no account, works in your browser." />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <header class="app-header">
@@ -13,7 +13,7 @@
       <div class="shield" aria-hidden="true">🛡️</div>
       <div>
         <h1>Incident Report Maker</h1>
-        <p class="tagline">Describe what happened or upload a video — build a structured report. Free, no account.</p>
+        <p class="tagline">Describe what happened or upload a video — build a report. Free, no account.</p>
       </div>
     </div>
     <button id="clearBtn" class="ghost-btn" type="button">Clear / new report</button>
@@ -24,20 +24,32 @@
     <section class="panel input-panel" aria-labelledby="inputHeading">
       <h2 id="inputHeading" class="panel-title">1. Provide the incident</h2>
 
-      <div class="tabs" role="tablist" aria-label="Input method">
+      <div class="section-head">Report details</div>
+      <div class="meta-grid">
+        <div>
+          <label class="field-label" for="subjectName">Name (report title)</label>
+          <input type="text" id="subjectName" placeholder="e.g. John Doe" />
+        </div>
+        <div>
+          <label class="field-label" for="incidentDate">Date</label>
+          <input type="date" id="incidentDate" />
+        </div>
+      </div>
+      <label class="field-label" for="arrestingOfficers">Arresting officers</label>
+      <input type="text" id="arrestingOfficers" placeholder="LSPD, BCSO, SAST, SWAT" />
+
+      <div class="section-head">Summary</div>
+      <div class="tabs" role="tablist" aria-label="Summary input method">
         <button class="tab active" role="tab" aria-selected="true" id="tab-text" data-mode="text">✍️ Describe</button>
         <button class="tab" role="tab" aria-selected="false" id="tab-video" data-mode="video">🎥 Upload video</button>
       </div>
 
-      <!-- Text mode -->
       <div class="mode-panel" id="mode-text" role="tabpanel" aria-labelledby="tab-text">
         <label class="field-label" for="summaryInput">Brief summary of what happened</label>
-        <textarea id="summaryInput" rows="7"
-          placeholder="e.g. Around 10:30 pm on Elm St, a silver sedan ran a red light and struck a parked car, then drove off heading north. A witness got a partial plate."></textarea>
-        <p class="hint">This becomes the summary and the start of the narrative. Fill the details below to complete the report.</p>
+        <textarea id="summaryInput" rows="6"
+          placeholder="e.g. Suspect fled a traffic stop on Elm St, was pursued and apprehended after a short foot chase. A firearm was recovered."></textarea>
       </div>
 
-      <!-- Video mode -->
       <div class="mode-panel hidden" id="mode-video" role="tabpanel" aria-labelledby="tab-video">
         <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload video">
           <input type="file" id="videoInput" accept="video/*" hidden />
@@ -49,62 +61,40 @@
         </div>
         <video id="videoPreview" class="hidden" controls playsinline muted></video>
         <div id="frameList" class="frame-list" aria-live="polite"></div>
-        <button id="buildNarrativeBtn" class="ghost-btn full hidden" type="button">⬇︎ Build narrative from frame notes</button>
+        <button id="buildNarrativeBtn" class="ghost-btn full hidden" type="button">⬇︎ Build summary from frame notes</button>
       </div>
 
-      <div class="section-head">Incident details</div>
+      <div class="section-head">Evidence</div>
+      <label class="field-label" for="evidenceLocker">Evidence locker #</label>
+      <input type="text" id="evidenceLocker" placeholder="e.g. 1042" />
+
+      <div class="section-head">Weapons</div>
+      <div id="weaponRows"></div>
+      <button id="addWeaponBtn" class="ghost-btn full" type="button">+ Add weapon</button>
+
+      <div class="section-head">Sentence</div>
       <div class="meta-grid">
         <div>
-          <label class="field-label" for="incidentType">Incident type</label>
-          <input type="text" id="incidentType" list="typeList" placeholder="e.g. Hit and run" />
-          <datalist id="typeList">
-            <option>Traffic collision</option><option>Hit and run</option><option>Theft / larceny</option>
-            <option>Burglary</option><option>Vandalism</option><option>Assault</option>
-            <option>Disturbance</option><option>Suspicious activity</option><option>Trespassing</option>
-            <option>DUI</option><option>Domestic incident</option><option>Welfare check</option>
-          </datalist>
+          <label class="field-label" for="criminalName">Criminal name</label>
+          <input type="text" id="criminalName" placeholder="Suspect name" />
         </div>
         <div>
-          <label class="field-label" for="caseNumber">Case / report #</label>
-          <input type="text" id="caseNumber" placeholder="auto — edit if needed" />
+          <label class="field-label" for="plea">Plea</label>
+          <select id="plea">
+            <option value="Guilty">Guilty</option>
+            <option value="Not Guilty">Not Guilty</option>
+            <option value="Force Plea">Force Plea</option>
+          </select>
         </div>
         <div>
-          <label class="field-label" for="incidentDate">Incident date &amp; time</label>
-          <input type="datetime-local" id="incidentDate" />
+          <label class="field-label" for="timeSentenced">Time sentenced (months)</label>
+          <input type="number" id="timeSentenced" min="0" placeholder="0" />
         </div>
         <div>
-          <label class="field-label" for="location">Location / address</label>
-          <input type="text" id="location" placeholder="Street, city" />
-        </div>
-        <div>
-          <label class="field-label" for="officerName">Reporting officer</label>
-          <input type="text" id="officerName" placeholder="Name / rank" />
-        </div>
-        <div>
-          <label class="field-label" for="badgeNo">Badge #</label>
-          <input type="text" id="badgeNo" placeholder="e.g. 4471" />
+          <label class="field-label" for="fine">Fine ($)</label>
+          <input type="number" id="fine" min="0" placeholder="0" />
         </div>
       </div>
-
-      <label class="field-label" for="involvedParties">Persons involved (victims, suspects, witnesses)</label>
-      <textarea id="involvedParties" rows="3" placeholder="One per line — role, name, description, contact."></textarea>
-
-      <label class="field-label" for="vehiclesProperty">Vehicles / property</label>
-      <textarea id="vehiclesProperty" rows="2" placeholder="Make/model/color/plate, or property involved."></textarea>
-
-      <label class="field-label" for="evidence">Evidence</label>
-      <textarea id="evidence" rows="2" placeholder="Photos, video, physical items, surveillance."></textarea>
-
-      <label class="field-label" for="actionsTaken">Actions taken</label>
-      <textarea id="actionsTaken" rows="2" placeholder="What you did on scene / follow-up."></textarea>
-
-      <label class="field-label" for="disposition">Status / disposition</label>
-      <input type="text" id="disposition" list="dispList" placeholder="e.g. Open — under investigation" />
-      <datalist id="dispList">
-        <option>Open — under investigation</option><option>Closed</option>
-        <option>Referred to detective</option><option>Cleared by arrest</option>
-        <option>Unfounded</option><option>Report only</option>
-      </datalist>
 
       <button id="generateBtn" class="primary-btn" type="button">Build report</button>
       <p id="status" class="status" aria-live="polite"></p>
@@ -113,7 +103,7 @@
     <!-- Report column -->
     <section class="panel report-panel" aria-labelledby="reportHeading">
       <div class="report-toolbar">
-        <h2 id="reportHeading" class="panel-title">2. Draft report</h2>
+        <h2 id="reportHeading" class="panel-title">2. Report</h2>
         <div class="toolbar-actions">
           <button id="copyBtn" class="ghost-btn" type="button" disabled>Copy</button>
           <button id="printBtn" class="ghost-btn" type="button" disabled>Print / PDF</button>
@@ -129,12 +119,11 @@
       <form id="reportForm" class="report hidden"></form>
 
       <p class="disclaimer">
-        ⚠️ Draft only. Officers must independently verify every fact, correct any error,
-        and complete required fields before this is used as, or filed with, an official record.
+        ⚠️ Draft — double-check every field before you post or submit it.
       </p>
     </section>
   </main>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

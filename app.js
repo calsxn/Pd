@@ -2,7 +2,7 @@
 
 /* ============================================================
    PD Incident Report Maker — free, no-key, fully client-side.
-   Builds a formatted report from typed details or video frames.
+   Output matches the standardized incident report template.
    ============================================================ */
 
 const $ = (id) => document.getElementById(id);
@@ -16,14 +16,14 @@ function setStatus(msg, kind = "") {
 
 /* ---------- Draft autosave ---------- */
 const INPUT_IDS = [
-  "summaryInput", "incidentType", "caseNumber", "incidentDate", "location",
-  "officerName", "badgeNo", "involvedParties", "vehiclesProperty",
-  "evidence", "actionsTaken", "disposition",
+  "subjectName", "incidentDate", "arrestingOfficers", "summaryInput",
+  "evidenceLocker", "criminalName", "plea", "timeSentenced", "fine",
 ];
 
 function saveDraft() {
   const data = {};
   INPUT_IDS.forEach((id) => (data[id] = $(id).value));
+  data.weapons = getWeapons();
   localStorage.setItem("pd_draft", JSON.stringify(data));
 }
 
@@ -31,28 +31,79 @@ function loadDraft() {
   try {
     const data = JSON.parse(localStorage.getItem("pd_draft") || "{}");
     INPUT_IDS.forEach((id) => { if (data[id] != null) $(id).value = data[id]; });
+    if (Array.isArray(data.weapons) && data.weapons.length) {
+      data.weapons.forEach((w) => addWeaponRow(w.type, w.serial));
+    }
   } catch (_) {}
 }
 
 INPUT_IDS.forEach((id) => $(id).addEventListener("input", saveDraft));
 
-/* ---------- Sensible defaults ---------- */
+/* ---------- Defaults ---------- */
 function pad(n) { return String(n).padStart(2, "0"); }
 
-function defaultCaseNumber() {
-  const d = new Date();
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}${pad(d.getDate())}-${rand}`;
-}
-
-function localDatetimeValue(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function initDefaults() {
-  if (!$("caseNumber").value) $("caseNumber").value = defaultCaseNumber();
-  if (!$("incidentDate").value) $("incidentDate").value = localDatetimeValue(new Date());
+  if (!$("incidentDate").value) {
+    const d = new Date();
+    $("incidentDate").value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  if (!$("arrestingOfficers").value) $("arrestingOfficers").value = "LSPD, BCSO, SAST, SWAT";
+  if ($("weaponRows").children.length === 0) addWeaponRow("", "");
 }
+
+function formatMDY(v) {
+  if (!v) return "00/00/0000";
+  const parts = v.split("-");
+  if (parts.length !== 3) return v;
+  return `${parts[1]}/${parts[2]}/${parts[0]}`;
+}
+
+/* ---------- Weapons (dynamic rows) ---------- */
+function addWeaponRow(type = "", serial = "") {
+  const row = document.createElement("div");
+  row.className = "weapon-row";
+
+  const typeInput = document.createElement("input");
+  typeInput.type = "text";
+  typeInput.placeholder = "Weapon type";
+  typeInput.value = type;
+  typeInput.className = "w-type";
+
+  const serialInput = document.createElement("input");
+  serialInput.type = "text";
+  serialInput.placeholder = "Serial #";
+  serialInput.value = serial;
+  serialInput.className = "w-serial";
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "w-remove";
+  remove.textContent = "✕";
+  remove.setAttribute("aria-label", "Remove weapon");
+  remove.addEventListener("click", () => { row.remove(); saveDraft(); });
+
+  [typeInput, serialInput].forEach((el) => el.addEventListener("input", saveDraft));
+
+  row.appendChild(typeInput);
+  row.appendChild(serialInput);
+  row.appendChild(remove);
+  $("weaponRows").appendChild(row);
+}
+
+function getWeapons() {
+  return Array.from($("weaponRows").querySelectorAll(".weapon-row")).map((row) => ({
+    type: row.querySelector(".w-type").value.trim(),
+    serial: row.querySelector(".w-serial").value.trim(),
+  }));
+}
+
+function weaponsText() {
+  const filled = getWeapons().filter((w) => w.type || w.serial);
+  if (filled.length === 0) return "N/A";
+  return filled.map((w) => `${w.type || "Weapon Type"} - 🔍 Serial Number #${w.serial}`).join("\n");
+}
+
+$("addWeaponBtn").addEventListener("click", () => addWeaponRow("", ""));
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -73,6 +124,7 @@ $("clearBtn").addEventListener("click", () => {
   if (!confirm("Clear all fields and start a new report?")) return;
   localStorage.removeItem("pd_draft");
   INPUT_IDS.forEach((id) => ($(id).value = ""));
+  $("weaponRows").innerHTML = "";
   frameNotes = [];
   $("frameList").innerHTML = "";
   $("buildNarrativeBtn").classList.add("hidden");
@@ -148,7 +200,7 @@ async function extractFrames() {
   }
   videoPreview.pause();
   $("buildNarrativeBtn").classList.remove("hidden");
-  setStatus(`Captured ${n} frames. Add a note under each, then build the narrative.`);
+  setStatus(`Captured ${n} frames. Add a note under each, then build the summary.`);
 }
 
 function addFrameRow(dataUrl, time, idx) {
@@ -186,65 +238,55 @@ $("buildNarrativeBtn").addEventListener("click", () => {
   const noted = frameNotes.filter((f) => f.note.trim());
   if (noted.length === 0) { setStatus("Add at least one frame note first.", "error"); return; }
   const lines = noted.map((f) => `At ${fmtTime(f.time)} into the recording, ${f.note.trim()}`);
-  const narrative = "The following is based on review of recorded video footage. " + lines.join(" ");
+  const narrative = "Based on review of recorded video footage. " + lines.join(" ");
   const existing = $("summaryInput").value.trim();
   $("summaryInput").value = existing ? existing + "\n\n" + narrative : narrative;
   saveDraft();
-  setStatus("Narrative built from frame notes and added to the summary box.");
+  setStatus("Summary built from frame notes.");
 });
 
-/* ---------- Build the report ---------- */
-const FIELDS = [
-  { key: "incident_type", label: "Incident type / classification", from: () => $("incidentType").value },
-  { key: "case_number", label: "Case / report number", from: () => $("caseNumber").value },
-  { key: "incident_datetime", label: "Date & time of incident", from: () => formatDate($("incidentDate").value) },
-  { key: "location", label: "Location / address", from: () => $("location").value },
-  { key: "reporting_officer", label: "Reporting officer", from: () => $("officerName").value },
-  { key: "badge_number", label: "Badge #", from: () => $("badgeNo").value },
-];
-const LONG_FIELDS = [
-  { key: "summary", label: "Summary", rows: 3, from: () => firstSentences($("summaryInput").value, 2) },
-  { key: "narrative", label: "Narrative", rows: 10, from: () => $("summaryInput").value },
-  { key: "involved_parties", label: "Persons involved", rows: 4, from: () => $("involvedParties").value },
-  { key: "vehicles_property", label: "Vehicles / property", rows: 2, from: () => $("vehiclesProperty").value },
-  { key: "evidence", label: "Evidence", rows: 2, from: () => $("evidence").value },
-  { key: "actions_taken", label: "Actions taken", rows: 2, from: () => $("actionsTaken").value },
-  { key: "disposition", label: "Status / disposition", rows: 1, from: () => $("disposition").value },
-];
-
-function formatDate(v) {
-  if (!v) return "";
-  const d = new Date(v);
-  if (isNaN(d)) return v;
-  return d.toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
-}
-
-function firstSentences(text, count) {
-  if (!text) return "";
-  const parts = text.replace(/\s+/g, " ").trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
-  return parts.slice(0, count).join(" ").trim();
-}
-
-function val(v) {
-  return v != null && String(v).trim() ? String(v).trim() : "[UNKNOWN]";
-}
-
+/* ---------- Build the report (template layout) ---------- */
 $("generateBtn").addEventListener("click", () => {
-  const summary = $("summaryInput").value.trim();
-  const anyDetail = INPUT_IDS.some((id) => $(id).value.trim());
-  if (!summary && !anyDetail) {
-    setStatus("Add a brief summary or some incident details first.", "error");
+  const hasContent =
+    $("subjectName").value.trim() || $("summaryInput").value.trim() ||
+    $("criminalName").value.trim() || getWeapons().some((w) => w.type || w.serial);
+  if (!hasContent) {
+    setStatus("Add a name, summary, or some details first.", "error");
     return;
   }
-  const report = {};
-  FIELDS.forEach((f) => (report[f.key] = f.from()));
-  LONG_FIELDS.forEach((f) => (report[f.key] = f.from()));
+
+  const report = {
+    name: $("subjectName").value.trim() || "[Name]",
+    date: formatMDY($("incidentDate").value),
+    arresting_officers: $("arrestingOfficers").value.trim() || "LSPD, BCSO, SAST, SWAT",
+    summary: $("summaryInput").value.trim(),
+    evidence: $("evidenceLocker").value.trim(),
+    weapons: weaponsText(),
+    s_name: $("criminalName").value.trim(),
+    s_plea: $("plea").value,
+    s_time: $("timeSentenced").value.trim() || "0",
+    s_fine: $("fine").value.trim() || "0",
+  };
   renderReport(report);
-  setStatus("Report built. Review and edit every field before use.");
+  setStatus("Report built. Review and edit any field before you export.");
 });
 
-/* ---------- Render editable report ---------- */
-function renderReport(report) {
+/* ---------- Render editable report in the template layout ---------- */
+function makeField(key, label, value, isLong) {
+  const wrap = document.createElement("div");
+  wrap.className = "rep-field";
+  const lab = document.createElement("label");
+  lab.textContent = label;
+  const el = isLong ? document.createElement("textarea") : document.createElement("input");
+  if (isLong) { el.rows = Math.max(2, String(value).split("\n").length); } else { el.type = "text"; }
+  el.value = value;
+  el.dataset.key = key;
+  wrap.appendChild(lab);
+  wrap.appendChild(el);
+  return wrap;
+}
+
+function renderReport(r) {
   const form = $("reportForm");
   form.innerHTML = "";
   $("reportEmpty").classList.add("hidden");
@@ -252,21 +294,33 @@ function renderReport(report) {
 
   const grid = document.createElement("div");
   grid.className = "rep-grid";
-  FIELDS.forEach((f) => grid.appendChild(field(f, report[f.key], false)));
+  grid.appendChild(makeField("name", "Name", r.name, false));
+  grid.appendChild(makeField("date", "Date", r.date, false));
   form.appendChild(grid);
 
-  LONG_FIELDS.forEach((f) => {
-    if (f.key === "summary") addSectionHead(form, "Summary");
-    if (f.key === "narrative") addSectionHead(form, "Narrative");
-    if (f.key === "involved_parties") addSectionHead(form, "Parties, property & evidence");
-    if (f.key === "actions_taken") addSectionHead(form, "Response");
-    form.appendChild(field(f, report[f.key], true));
-  });
+  addSectionHead(form, "Arresting Officers");
+  form.appendChild(makeField("arresting_officers", "Arresting officers", r.arresting_officers, false));
+
+  addSectionHead(form, "Summary");
+  form.appendChild(makeField("summary", "Summary", r.summary, true));
+
+  addSectionHead(form, "Evidence");
+  form.appendChild(makeField("evidence", "Evidence locker #", r.evidence, false));
+
+  addSectionHead(form, "Weapon");
+  form.appendChild(makeField("weapons", "Weapons (one per line)", r.weapons, true));
+
+  addSectionHead(form, "Sentence");
+  const sgrid = document.createElement("div");
+  sgrid.className = "rep-grid";
+  sgrid.appendChild(makeField("s_name", "Criminal name", r.s_name, false));
+  sgrid.appendChild(makeField("s_plea", "Plea", r.s_plea, false));
+  sgrid.appendChild(makeField("s_time", "Time sentenced (months)", r.s_time, false));
+  sgrid.appendChild(makeField("s_fine", "Fine ($)", r.s_fine, false));
+  form.appendChild(sgrid);
 
   ["copyBtn", "printBtn", "downloadBtn"].forEach((id) => ($(id).disabled = false));
 
-  // On phones the report renders below the long input form — bring it into view
-  // so it's obvious the report was built.
   requestAnimationFrame(() => {
     document.querySelector(".report-panel").scrollIntoView({ behavior: "smooth", block: "start" });
   });
@@ -279,32 +333,35 @@ function addSectionHead(form, label) {
   form.appendChild(h);
 }
 
-function field(f, value, isLong) {
-  const wrap = document.createElement("div");
-  wrap.className = "rep-field";
-  const label = document.createElement("label");
-  label.textContent = f.label;
-  const el = isLong ? document.createElement("textarea") : document.createElement("input");
-  if (isLong) el.rows = f.rows || 3; else el.type = "text";
-  el.value = val(value);
-  el.dataset.key = f.key;
-  el.dataset.label = f.label;
-  wrap.appendChild(label);
-  wrap.appendChild(el);
-  return wrap;
+/* ---------- Export in the exact template layout ---------- */
+function g(key) {
+  const el = $("reportForm").querySelector(`[data-key="${key}"]`);
+  return el ? el.value.trim() : "";
 }
 
-/* ---------- Export ---------- */
 function reportToText() {
-  const lines = ["POLICE INCIDENT REPORT (DRAFT)", "=".repeat(40), ""];
-  $("reportForm").querySelectorAll("[data-key]").forEach((el) => {
-    lines.push(el.dataset.label.toUpperCase() + ":");
-    lines.push(el.value);
-    lines.push("");
-  });
-  lines.push("-".repeat(40));
-  lines.push("Draft — must be reviewed and verified by a sworn officer before filing.");
-  return lines.join("\n");
+  return [
+    g("name") || "[Name]",
+    "Date: " + (g("date") || "00/00/0000"),
+    "",
+    "Arresting Officers",
+    g("arresting_officers"),
+    "",
+    "Summary",
+    g("summary"),
+    "",
+    "Evidence",
+    "Evidence Locker: #" + g("evidence"),
+    "",
+    "Weapon",
+    g("weapons") || "N/A",
+    "",
+    "Sentence",
+    g("s_name") + " -",
+    g("s_plea"),
+    "Time Sentenced: " + (g("s_time") || "0") + " Months",
+    "Fine: $" + (g("s_fine") || "0"),
+  ].join("\n");
 }
 
 $("copyBtn").addEventListener("click", async () => {
