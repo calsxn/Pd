@@ -264,6 +264,12 @@ function renderReport(report) {
   });
 
   ["copyBtn", "printBtn", "downloadBtn"].forEach((id) => ($(id).disabled = false));
+
+  // On phones the report renders below the long input form — bring it into view
+  // so it's obvious the report was built.
+  requestAnimationFrame(() => {
+    document.querySelector(".report-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function addSectionHead(form, label) {
