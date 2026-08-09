@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PD Incident Report Maker</title>
+  <meta name="description" content="Draft structured police incident reports from a brief description or an uploaded video." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="shield" aria-hidden="true">🛡️</div>
+      <div>
+        <h1>Incident Report Maker</h1>
+        <p class="tagline">Describe what happened or upload a video — get a structured draft report.</p>
+      </div>
+    </div>
+    <button id="settingsBtn" class="ghost-btn" type="button" aria-label="Settings">⚙️ Settings</button>
+  </header>
+
+  <main class="layout">
+    <!-- Input column -->
+    <section class="panel input-panel" aria-labelledby="inputHeading">
+      <h2 id="inputHeading" class="panel-title">1. Provide the incident</h2>
+
+      <div class="tabs" role="tablist" aria-label="Input method">
+        <button class="tab active" role="tab" aria-selected="true" id="tab-text" data-mode="text">✍️ Describe</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-video" data-mode="video">🎥 Upload video</button>
+      </div>
+
+      <!-- Text mode -->
+      <div class="mode-panel" id="mode-text" role="tabpanel" aria-labelledby="tab-text">
+        <label class="field-label" for="summaryInput">Brief summary of what happened</label>
+        <textarea id="summaryInput" rows="8"
+          placeholder="e.g. Around 10:30 pm on Elm St, a silver sedan ran a red light and struck a parked car, then drove off heading north. A witness got a partial plate."></textarea>
+      </div>
+
+      <!-- Video mode -->
+      <div class="mode-panel hidden" id="mode-video" role="tabpanel" aria-labelledby="tab-video">
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload video">
+          <input type="file" id="videoInput" accept="video/*" hidden />
+          <div class="dropzone-inner">
+            <div class="dz-icon" aria-hidden="true">⬆️</div>
+            <p><strong>Click to choose a video</strong> or drag &amp; drop it here</p>
+            <p class="hint">Frames are sampled in your browser. The video file itself is never uploaded anywhere.</p>
+          </div>
+        </div>
+        <video id="videoPreview" class="hidden" controls playsinline muted></video>
+        <div id="frameStrip" class="frame-strip" aria-live="polite"></div>
+        <label class="field-label" for="videoNotes">Optional notes to add context</label>
+        <textarea id="videoNotes" rows="3" placeholder="Anything the footage doesn't show — date, exact location, names, what happened before/after."></textarea>
+      </div>
+
+      <div class="meta-grid">
+        <div>
+          <label class="field-label" for="officerName">Reporting officer (optional)</label>
+          <input type="text" id="officerName" placeholder="Name / rank" />
+        </div>
+        <div>
+          <label class="field-label" for="badgeNo">Badge # (optional)</label>
+          <input type="text" id="badgeNo" placeholder="e.g. 4471" />
+        </div>
+      </div>
+
+      <button id="generateBtn" class="primary-btn" type="button">Generate report</button>
+      <p id="status" class="status" aria-live="polite"></p>
+    </section>
+
+    <!-- Report column -->
+    <section class="panel report-panel" aria-labelledby="reportHeading">
+      <div class="report-toolbar">
+        <h2 id="reportHeading" class="panel-title">2. Draft report</h2>
+        <div class="toolbar-actions">
+          <button id="copyBtn" class="ghost-btn" type="button" disabled>Copy</button>
+          <button id="printBtn" class="ghost-btn" type="button" disabled>Print / PDF</button>
+          <button id="downloadBtn" class="ghost-btn" type="button" disabled>Download</button>
+        </div>
+      </div>
+
+      <div id="reportEmpty" class="empty-state">
+        <div class="empty-icon" aria-hidden="true">📄</div>
+        <p>Your generated report will appear here.<br />Fields are editable before you export.</p>
+      </div>
+
+      <form id="reportForm" class="report hidden"></form>
+
+      <p class="disclaimer">
+        ⚠️ AI-generated draft. Officers must independently verify every fact, correct any error,
+        and complete required fields before this is used as, or filed with, an official record.
+      </p>
+    </section>
+  </main>
+
+  <!-- Settings dialog -->
+  <dialog id="settingsDialog">
+    <form method="dialog" class="settings">
+      <h2>Settings</h2>
+      <label class="field-label" for="apiKey">Anthropic API key</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
+      <p class="hint">
+        Stored only in this browser (localStorage) and sent directly to Anthropic's API.
+        Get a key at <span class="mono">console.anthropic.com</span>.
+      </p>
+
+      <label class="field-label" for="modelSelect">Model</label>
+      <select id="modelSelect">
+        <option value="claude-sonnet-5">Claude Sonnet — balanced (recommended)</option>
+        <option value="claude-opus-5">Claude Opus — most capable</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku — fastest</option>
+      </select>
+
+      <label class="field-label" for="frameCount">Video frames to sample</label>
+      <select id="frameCount">
+        <option value="6">6 frames</option>
+        <option value="8" selected>8 frames</option>
+        <option value="12">12 frames</option>
+      </select>
+
+      <div class="settings-actions">
+        <button value="cancel" class="ghost-btn" type="submit">Close</button>
+        <button id="saveSettings" value="save" class="primary-btn" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
